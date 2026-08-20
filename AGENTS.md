@@ -73,7 +73,7 @@
 ## Renderer Notes
 
 - Default renderers should look consistent on iOS/Android.
-- Math rendering is package-level RaTeX only; keep the previous MathJax/SVG renderer confined to the example benchmark.
+- Math rendering ships no native math engine: math nodes render as monospace text. The RaTeX peer dependency was dropped outright (with the autolinking workaround it required); keep the previous MathJax/SVG renderer confined to the example benchmark.
 - Use platform-neutral visuals for task checkboxes (no OS glyphs).
 - Table renderer renders immediately with estimated widths, then refines after measurement (never gates on layout).
 - Table measurement is debounced to avoid stream-time thrashing.

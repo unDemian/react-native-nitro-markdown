@@ -9,6 +9,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **Breaking changes are always listed first in each release section** so upgrades
 stay safe.
 
+## [0.11.0-superpower.4] - 2026-08-20
+
+### Changes
+
+- **Breaking change:** images, math (inline and block) and HTML blocks are
+  now standalone blocks. Each renders a view, and a view nested in a run's
+  text host is positioned by placeholder spans on Android, where selection
+  degrades across it. Classification walks the tree, so a paragraph carrying
+  an inline image or inline math is standalone too and keeps the dedicated
+  renderers' layout path.
+- **Breaking change:** the run host no longer declares `onSelectionChange`,
+  and `react-native-nitro-markdown/testing` no longer exports
+  `simulateRunSelection`. Nothing consumed either; the host contract is the
+  Copy as Markdown menu action.
+- `onCopyAsMarkdown` requires a native `runHost`. The default host — the
+  platform's selectable text component — reports no selection range on
+  either platform, so the callback could never fire; development builds now
+  warn when it is set without a host.
+- Node identity is reused across parses inside `<Markdown>`, so the
+  documented "a streamed append re-renders only the still-growing tail run"
+  now holds for the plain `<Markdown selectable>{text}</Markdown>` path, not
+  only for a hand-wired `sourceAst`.
+- `onCopyAsMarkdown` and `onLinkPress` are read through refs, so passing them
+  as inline arrows no longer rebuilds the context value and re-renders every
+  node of the document on each streamed chunk. `renderers`, `classifyBlock`,
+  `textPrimitive` and `runHost` are read during render and still need stable
+  identities.
+- Copy as Markdown slices the text the parse offsets index, after
+  `beforeParse` plugins have run. A length-changing plugin used to displace
+  every offset and hand back the wrong substring.
+- Soft and hard breaks carry their own source range inside a run, so a
+  selection crossing a wrapped line copies those lines instead of snapping to
+  the whole paragraph.
+- A run renders the blank line between a container's block children, and
+  indents a nested list by one level per level of nesting. Multi-paragraph
+  blockquotes and list items no longer glue into one line.
+- Run presentation matches the standalone renderers where a text tree allows
+  it: heading weight and letter spacing are resolved the same way, and a
+  blockquote's muted colour reaches the text inside it. A `styles` override
+  is narrowed to the properties a nested span honours, and development builds
+  name the view-only properties they drop.
+- `mapSelectionToSource` clamps before checking for an empty range, so
+  offsets that outrun the source return nothing instead of firing
+  `onCopyAsMarkdown` with an empty string.
+- `smartPunctuation` follows markdown-it's dash rules, leaving `--verbose` in
+  prose alone, and threads the preceding character across nodes so a quote
+  that inline markup pushed into its own node curls closed.
+- The `./testing` entry point resolves to built artifacts like every other
+  entry, and its helpers no longer type-import `react-test-renderer`: they
+  take any rendered instance with `props` and `children`.
+- The mock native parser matches md4c on CRLF input, loose lists, setext
+  headings, and thematic breaks and tables that interrupt a paragraph.
+
+## [0.11.0-superpower.3] - 2026-08-18
+
+### Changes
+
+- Standalone blocks are selectable within themselves in selectable mode:
+  fenced code text and each table cell render through the injectable
+  selectable host (`runHost`), each as its own selection scope. A selection
+  still never crosses a standalone block.
+
+## [0.11.0-superpower.2] - 2026-08-18
+
+Fork release: selectable runs (spec 0001, mobile-react-app). Consumed as a
+vendored tarball until the fork has a remote to pin as a git dependency.
+
+### Changes
+
+- **Breaking changes:** the math rendering peer dependency
+  (`ratex-react-native`) is dropped outright, removing the autolinking
+  workaround it required. Math nodes render as monospace text; parsing is
+  unchanged.
+- Selectable runs: `<Markdown selectable>` classifies top-level blocks as
+  flowing or standalone (`classifyBlock` extends the default — tables and
+  fenced code), merges adjacent flowing blocks into runs, and renders each
+  run into one selectable host (`SelectableRunHost`; replaceable via
+  `runHost`). Runs are memoization boundaries keyed by the source offset of
+  their first block and compared on AST node identity, so streamed appends
+  re-render only the still-growing tail run.
+- Injectable inline text primitive (`RunText`, `textPrimitive` prop): the
+  inline group wrapper and every inline span render through it, so custom
+  renderers participate in a selection. Inline custom renderers must emit
+  text spans, never views.
+- Range-to-source mapping (`mapSelectionToSource`) and `onCopyAsMarkdown`:
+  the host reports selection offsets plus source-annotated spans; the
+  consumer receives the markdown source for exactly the selected range.
+- `smartPunctuation`: typographic quotes/dashes/ellipses as a render-time
+  transform over parsed text content (never a pre-parse plugin, which would
+  disable incremental AST reuse).
+- Testing entry point `react-native-nitro-markdown/testing`: a
+  source-faithful mock native parser with real source offsets, and stubbed
+  host simulation helpers for consumer suites.
+
 ## [0.10.0] - 2026-08-12
 
 ### Changes

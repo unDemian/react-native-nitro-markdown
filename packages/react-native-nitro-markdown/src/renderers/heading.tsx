@@ -45,7 +45,11 @@ type HeadingStyles = ReturnType<typeof createStyles>;
 
 const stylesCache = new WeakMap<MarkdownTheme, HeadingStyles>();
 
-const getHeadingWeight = (theme: MarkdownTheme) =>
+/**
+ * Shared with the run-flow heading style so a heading keeps the same weight
+ * whether or not it renders inside a selectable run.
+ */
+export const getHeadingWeight = (theme: MarkdownTheme) =>
   theme.headingWeight ??
   (Platform.OS === "android" &&
   theme.fontFamilies.heading &&

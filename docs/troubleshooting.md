@@ -6,10 +6,17 @@ The native build did not link the module. Re-run `bunx expo prebuild` (Expo) or
 `pod install` (bare), then rebuild the app. Nitro modules cannot load in
 **Expo Go** — use a development build.
 
-### Math does not render
+### Math renders as plain text
 
-Ensure `ratex-react-native` is installed (it is a peer dependency) and the
-native app has been rebuilt after install.
+That is the built-in behavior: the package ships no math typesetting engine, so
+`math_inline` and `math_block` nodes render their source as monospace text. To
+typeset math, pass your own `math_inline` / `math_block` custom renderers — see
+[customization](./customization.md).
+
+### Math does not render at all
+
+Check that `options.math` is enabled (it is by default) and that the source uses
+`$…$` / `$$…$$` delimiters.
 
 ### Streaming updates too often / janky
 

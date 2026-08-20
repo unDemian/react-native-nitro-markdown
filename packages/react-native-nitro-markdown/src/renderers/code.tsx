@@ -11,6 +11,7 @@ import {
 import { getCachedStyles } from "./style-cache";
 import { getTextContent } from "../headless";
 import { useMarkdownContext } from "../MarkdownContext";
+import { SelectableRunHost } from "../selection/selectable-run-host";
 import {
   defaultHighlighter,
   type HighlightedToken,
@@ -51,6 +52,7 @@ export const CodeBlock: FC<CodeBlockProps> = ({
   const styles = getCachedStyles(codeBlockStylesCache, theme, createCodeStyles);
 
   const showLanguage = theme.showCodeLanguage && language;
+  const CodeTextHost = ctx.runHost ?? SelectableRunHost;
 
   return (
     <View style={[styles.codeBlock, style]}>
@@ -62,24 +64,26 @@ export const CodeBlock: FC<CodeBlockProps> = ({
         showsHorizontalScrollIndicator={false}
         bounces={false}
       >
-        {highlightedTokens ? (
-          <Text style={styles.codeBlockText} selectable>
-            {highlightedTokens.map((token: HighlightedToken, i: number) => {
-              const tokenColor = ctx.theme.colors.codeTokenColors?.[token.type];
-              return tokenColor ? (
-                <Text key={i} style={{ color: tokenColor }}>
-                  {token.text}
-                </Text>
-              ) : (
-                <Text key={i}>{token.text}</Text>
-              );
-            })}
-          </Text>
-        ) : (
-          <Text style={styles.codeBlockText} selectable>
-            {displayContent}
-          </Text>
-        )}
+        {/* The code text renders through the selectable host: a code block is
+            its own selection scope — a selection never crosses it, but a
+            reader can select inside it. The default host is the platform's
+            selectable text component; consumers may inject a native host via
+            `runHost`. */}
+        <CodeTextHost style={styles.codeBlockText}>
+          {highlightedTokens
+            ? highlightedTokens.map((token: HighlightedToken, i: number) => {
+                const tokenColor =
+                  ctx.theme.colors.codeTokenColors?.[token.type];
+                return tokenColor ? (
+                  <Text key={i} style={{ color: tokenColor }}>
+                    {token.text}
+                  </Text>
+                ) : (
+                  <Text key={i}>{token.text}</Text>
+                );
+              })
+            : displayContent}
+        </CodeTextHost>
       </ScrollView>
     </View>
   );

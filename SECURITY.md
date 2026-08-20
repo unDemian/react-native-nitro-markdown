@@ -51,9 +51,9 @@ documented here so app owners can reason about what is and is not guaranteed.
   upstream revision and synchronization policy are recorded in
   `cpp/nitromd/UPSTREAM.md`. Upstream security updates require a synchronized
   update of the vendored copy.
-- Runtime peer dependencies (`react-native-nitro-modules`,
-  `ratex-react-native`) are updated on the package's release cadence; see the
-  package `README.md` compatibility table for supported ranges.
+- The runtime peer dependency (`react-native-nitro-modules`) is updated on the
+  package's release cadence; see the package `README.md` compatibility table for
+  the supported range.
 
 ## Reporting a Vulnerability
 

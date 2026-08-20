@@ -28,9 +28,9 @@ by device, the ratios are stable):
 | Markdown-It (JS) | ~184 ms | ~4.5× slower |
 | Marked (JS) | ~814 ms | ~19.8× slower |
 
-Math rendering (via `ratex-react-native`) is ~10× faster than legacy MathJax/SVG
-(~233 ms vs ~2517 ms in the same run). Reproduce any of this yourself: run the
-example app and tap **Run Benchmark**.
+The **Bench** tab also times the built-in math rendering against a legacy
+MathJax/SVG custom renderer on the same document. Reproduce any of this
+yourself: run the example app and tap **Run Benchmark**.
 
 ## Capability matrix
 
@@ -48,6 +48,10 @@ Versus typical JS-parser Markdown renderers for React Native:
 | Long-doc virtualization | ✅ | ❌ |
 | Plugin pipeline (before/after parse) | ✅ | ⚠️ varies |
 | Syntax highlighting | ✅ | ⚠️ varies |
+
+Math nodes are parsed and rendered as monospace text — the package ships no math
+typesetting engine, so it needs no extra native dependency. Supply your own
+`math_inline` / `math_block` renderers to typeset math.
 
 ## Rendering performance
 

@@ -125,7 +125,7 @@ type LogEntry = {
 };
 
 type LatexBenchmarkTarget = {
-  renderer: "ratex" | "legacy-mathjax";
+  renderer: "builtin" | "legacy-mathjax";
   startedAt: number;
   token: number;
 };
@@ -145,7 +145,7 @@ type BenchmarkResults = {
   markdownItTime: number;
   markedTime: number;
   mathjaxTime: number | null;
-  ratexTime: number | null;
+  builtinMathTime: number | null;
   nitroRenderTime: number | null;
   nitroFirstScreenTime: number | null;
 };
@@ -974,7 +974,10 @@ export default function BenchmarkScreen() {
       () => measureLatexRenderer("legacy-mathjax"),
       null,
     );
-    const ratexTime = await isolate(() => measureLatexRenderer("ratex"), null);
+    const builtinMathTime = await isolate(
+      () => measureLatexRenderer("builtin"),
+      null,
+    );
     const nitroRenderTime = await isolate(
       () => measureRenderMedian("nitro"),
       null,
@@ -993,7 +996,7 @@ export default function BenchmarkScreen() {
       markdownItTime,
       markedTime,
       mathjaxTime,
-      ratexTime,
+      builtinMathTime,
       nitroRenderTime,
       nitroFirstScreenTime,
     });
@@ -1100,8 +1103,8 @@ export default function BenchmarkScreen() {
             <View style={styles.resultGroup}>
               <Text style={styles.resultGroupTitle}>Math renderer</Text>
               <BenchBar
-                label="RaTeX"
-                ms={benchmarkResults.ratexTime ?? 0}
+                label="Built-in (text)"
+                ms={benchmarkResults.builtinMathTime ?? 0}
                 maxMs={benchmarkResults.mathjaxTime ?? 1}
                 highlight
               />
@@ -1109,8 +1112,12 @@ export default function BenchmarkScreen() {
                 label="Legacy MathJax/SVG"
                 ms={benchmarkResults.mathjaxTime ?? 0}
                 maxMs={benchmarkResults.mathjaxTime ?? 1}
-                ratio={`${formatRatio(benchmarkResults.mathjaxTime, benchmarkResults.ratexTime)}`}
+                ratio={`${formatRatio(benchmarkResults.mathjaxTime, benchmarkResults.builtinMathTime)}`}
               />
+              <Text style={styles.metricNote}>
+                The built-in renderer draws math as monospace text; MathJax/SVG
+                typesets it. Different output, not a like-for-like comparison.
+              </Text>
             </View>
 
             <View style={styles.resultGroup}>

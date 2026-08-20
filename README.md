@@ -46,18 +46,17 @@ Native components — so you get native parse speed *and* component flexibility.
 ## Install
 
 ```sh
-bun add react-native-nitro-markdown react-native-nitro-modules@0.36.5 ratex-react-native@0.1.14
+bun add react-native-nitro-markdown react-native-nitro-modules@0.36.5
 ```
 
 ```sh
 # Expo development build
-bunx expo install react-native-nitro-markdown react-native-nitro-modules@0.36.5 ratex-react-native@0.1.14
+bunx expo install react-native-nitro-markdown react-native-nitro-modules@0.36.5
 bunx expo prebuild
 ```
 
-`react-native-nitro-modules` and `ratex-react-native` are peer dependencies
-(parsing and math rendering use native code). Expo Go cannot load Nitro
-modules — use a development build. Full guide: **[Installation](https://github.com/JoaoPauloCMarra/react-native-nitro-markdown/blob/main/docs/installation.md)**.
+`react-native-nitro-modules` is a peer dependency (parsing uses native code).
+Expo Go cannot load Nitro modules — use a development build. Full guide: **[Installation](https://github.com/JoaoPauloCMarra/react-native-nitro-markdown/blob/main/docs/installation.md)**.
 
 ## Quick start
 
@@ -121,6 +120,45 @@ node reuse. Failed updates call `onError(error, "parse")` and retain the last
 valid render. For very large initial content, pass `initialParseMode="async"`
 so the first frame renders without parsing. Full guide:
 **[Streaming](https://github.com/JoaoPauloCMarra/react-native-nitro-markdown/blob/main/docs/streaming.md)**.
+
+## Selectable runs
+
+With `selectable`, adjacent flowing blocks (paragraphs, headings, lists,
+blockquotes) merge into **runs** — each run is one native text tree, so a
+reader can select and copy across every block inside it in one gesture.
+Standalone blocks terminate the run and keep their own renderers and
+gestures: tables and fenced code, which own gestures of their own, plus
+images, math and HTML blocks, which render views. Runs are memoization
+boundaries keyed by source offset, so streaming appends re-render only the
+still-growing tail run.
+
+```tsx
+<Markdown
+  selectable
+  smartPunctuation
+  runHost={NativeSelectableRunHost}
+  classifyBlock={classifyCopyAction}
+  onCopyAsMarkdown={(markdown) => Clipboard.setStringAsync(markdown)}
+>
+  {content}
+</Markdown>
+```
+
+**Copy as Markdown needs a native host.** A selected range maps back onto the
+markdown source and `onCopyAsMarkdown` receives that exact substring — but
+only a `runHost` can report *which* range the reader selected. The default
+host is the platform's own selectable text component, which reports no range
+on either platform, so `onCopyAsMarkdown` never fires without one (and
+development builds say so). Out of the box a reader gets selection plus
+plain-text copy on Android, and whole-run copy on iOS.
+
+Custom inline renderers must emit text spans through the injectable primitive
+(`RunText`), never views. Give `classifyBlock`, `renderers`, `textPrimitive`
+and `runHost` stable identities — they are read during render, so a new one
+each render re-renders the document. `onCopyAsMarkdown` and `onLinkPress` are
+read on the gesture and are safe to pass inline. Architecture, host contract
+and testing helpers:
+**[docs/selectable-runs.md](https://github.com/JoaoPauloCMarra/react-native-nitro-markdown/blob/main/docs/selectable-runs.md)**.
 
 ## Headless parsing
 
@@ -186,7 +224,7 @@ Presets: `defaultMarkdownTheme`, `darkMarkdownTheme`, `minimalMarkdownTheme` (or
 | Prop / option | Default | What it does |
 | ------------- | ------- | ------------ |
 | `options.gfm` | `true` | Tables, strikethrough, task lists, autolinks. |
-| `options.math` | `true` | Inline and block math nodes. |
+| `options.math` | `true` | Inline and block math nodes. Rendered as monospace text — the package ships no math typesetting engine and needs no extra native dependency. |
 | `options.html` | `false` | Preserve raw HTML nodes for custom renderers. |
 | `options.sourceOffsets` | `true` | Emit per-node `beg`/`end` source offsets as JavaScript UTF-16 indices, matching `String.length` and `String.slice`. Set `false` for one-shot headless parses to shrink the AST and speed up the round trip (the native parser skips the offset map entirely). |
 | `options.maxInputLength` | `10000000` | Maximum accepted input length in characters. Oversized inputs fail with a typed `input_too_large` error instead of being parsed. |
@@ -196,7 +234,12 @@ Presets: `defaultMarkdownTheme`, `darkMarkdownTheme`, `minimalMarkdownTheme` (or
 | `errorText` | `"Error parsing markdown"` | Localized text rendered when parsing fails. |
 | `imageOptions` | `undefined` | Image URL policy: `allowedProtocols`, `allowedHosts`, and `remoteImages: "deny"` to block remote image loading entirely. |
 | `highlightCode` | `false` | Built-in code syntax highlighting (fixture-backed languages: JS/TS family, Python, shell). |
-| `virtualize` | `false` | Virtualize top-level blocks for long documents. |
+| `virtualize` | `false` | Virtualize top-level blocks for long documents. Mutually exclusive with `selectable`. |
+| `selectable` | `false` | Render adjacent flowing blocks as selectable runs: one selection can span a heading, paragraphs, lists and blockquotes; it stops at standalone blocks (tables, fenced code, images, math, HTML blocks). See [Selectable runs](#selectable-runs). |
+| `classifyBlock` | `undefined` | Consumer classification of top-level blocks — return `"standalone"` to register app-specific standalone blocks. Read during render, so keep its identity stable. |
+| `onCopyAsMarkdown` | `undefined` | Receives the markdown source for exactly the range the reader selected. Requires a native `runHost` — the default host reports no selection range, so this never fires without one. |
+| `smartPunctuation` | `false` | Typographic quotes/dashes/ellipses, applied as a render-time transform over parsed text (never a pre-parse plugin, so incremental streaming stays intact). |
+| `textPrimitive` / `runHost` | defaults | The injectable inline text primitive and the selectable host a run renders into. |
 
 See **[Usage](https://github.com/JoaoPauloCMarra/react-native-nitro-markdown/blob/main/docs/usage.md)** for the full prop table and **[Customization](https://github.com/JoaoPauloCMarra/react-native-nitro-markdown/blob/main/docs/customization.md)** for themes, per-node styles, custom renderers, and plugins.
 
@@ -251,7 +294,6 @@ See [SECURITY.md](./SECURITY.md) for supported versions and how to report issues
 | ---------- | --------- |
 | [React Native](https://reactnative.dev/) | `>=0.75` (New Architecture) |
 | [Nitro Modules](https://www.npmjs.com/package/react-native-nitro-modules) | `>=0.36.5 <0.37.0` |
-| [RaTeX React Native](https://www.npmjs.com/package/ratex-react-native) | `>=0.1.4` (example validated with `0.1.14`) |
 | [Expo](https://docs.expo.dev/) | SDK 57 development builds |
 | Platforms | iOS, Android (Web not supported) |
 

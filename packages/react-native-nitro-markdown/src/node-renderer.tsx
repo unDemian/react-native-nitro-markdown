@@ -20,6 +20,17 @@ import {
   type NodeRendererProps,
 } from "./MarkdownContext";
 import { Blockquote } from "./renderers/blockquote";
+import { useInRunFlow } from "./selection/run-flow-context";
+import {
+  getRunFlowStyles,
+  toRunFlowTextStyle,
+} from "./selection/run-flow-styles";
+import { RunText, sourceRangeOf } from "./selection/run-text";
+import { RunDocument } from "./selection/run-view";
+import {
+  smartenText,
+  trailingSmartChar,
+} from "./selection/smart-punctuation";
 import { CodeBlock, InlineCode } from "./renderers/code";
 import { Heading } from "./renderers/heading";
 import { HorizontalRule } from "./renderers/horizontal-rule";
@@ -52,14 +63,83 @@ const containsInlineMath = (nodes?: MarkdownNode[]): boolean =>
     (node) => node.type === "math_inline" || containsInlineMath(node.children),
   ) ?? false;
 
+/**
+ * The text a reader sees between two block children of the same container
+ * inside a run. A nested list continues its parent item's line rather than
+ * starting a new paragraph, so it takes a single break; everything else takes
+ * the blank line that separates blocks in markdown.
+ */
+const blockSeparatorBefore = (node: MarkdownNode): string =>
+  node.type === "list" ? "\n" : "\n\n";
+
+/**
+ * A list descends two renderer levels per level of nesting (list → list_item →
+ * list), so raw depth grows twice as fast as the indent a reader expects.
+ */
+const runListIndentDepth = (depth: number): number =>
+  Math.max(0, Math.floor((depth - 1) / 2));
+
+/**
+ * The character a reader sees at the end of what `node` renders, given the
+ * character immediately before it.
+ *
+ * Smart punctuation runs per text node, but a text node is only a fragment of
+ * the prose: `She said "**yes**"` splits into three nodes and the closing
+ * quote starts its own. Threading the trailing character across siblings is
+ * what lets that quote curl closed.
+ */
+const smartTrailingChar = (
+  node: MarkdownNode,
+  precedingChar: string | undefined,
+): string | undefined => {
+  switch (node.type) {
+    case "text":
+      return (
+        trailingSmartChar(smartenText(node.content ?? "", precedingChar)) ??
+        precedingChar
+      );
+    case "code_inline":
+    case "html_inline":
+      return trailingSmartChar(node.content ?? "") ?? precedingChar;
+    case "soft_break":
+      return " ";
+    case "line_break":
+      return "\n";
+    case "image":
+    case "math_inline":
+    case "math_block":
+      // Renders something that is not prose, so the next quote opens.
+      return undefined;
+    default: {
+      const children = node.children;
+      if (!children || children.length === 0) return undefined;
+      let current = precedingChar;
+      for (const child of children) {
+        current = smartTrailingChar(child, current);
+      }
+      return current;
+    }
+  }
+};
+
 const NodeRendererComponent: FC<NodeRendererProps> = ({
   node,
   depth,
   inListItem,
   parentIsText = false,
+  precedingChar,
 }) => {
-  const { renderers, theme, styles: nodeStyles } = useMarkdownContext();
+  const {
+    renderers,
+    theme,
+    styles: nodeStyles,
+    selectable,
+    smartPunctuation,
+    textPrimitive,
+  } = useMarkdownContext();
   const baseStyles = getBaseStyles(theme);
+  const inRunFlow = useInRunFlow();
+  const Primitive = textPrimitive ?? RunText;
 
   const renderChildren = (
     children?: MarkdownNode[],
@@ -69,12 +149,17 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
     if (!children || children.length === 0) return null;
 
     const elements: ReactNode[] = [];
-    let currentInlineGroup: MarkdownNode[] = [];
+    type InlineEntry = { node: MarkdownNode; before: string | undefined };
+    let currentInlineGroup: InlineEntry[] = [];
+    // The character a reader sees before the child about to be rendered. Only
+    // tracked when smart punctuation is on; otherwise it stays undefined and
+    // never perturbs the renderer memo.
+    let runningChar = smartPunctuation ? precedingChar : undefined;
 
     const flushInlineGroup = () => {
       if (currentInlineGroup.length > 0) {
         const hasMath = currentInlineGroup.some(
-          (child) => child.type === "math_inline",
+          (entry) => entry.node.type === "math_inline",
         );
 
         if (hasMath && !childParentIsText) {
@@ -88,32 +173,36 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
                 flexShrink: 1,
               }}
             >
-              {currentInlineGroup.map((n, idx) => (
+              {currentInlineGroup.map((entry, idx) => (
                 <NodeRenderer
-                  key={`${n.type}-${idx}`}
-                  node={n}
+                  key={`${entry.node.type}-${idx}`}
+                  node={entry.node}
                   depth={depth + 1}
                   inListItem={childInListItem}
                   parentIsText={false}
+                  precedingChar={entry.before}
                 />
               ))}
             </View>,
           );
         } else {
-          const Wrapper = childParentIsText ? Fragment : Text;
+          // The inline group wrapper is the injectable text primitive — the
+          // one wrapper custom renderers could never override upstream.
+          const Wrapper = childParentIsText ? Fragment : Primitive;
           const wrapperProps = childParentIsText
             ? {}
             : { style: baseStyles.text };
 
           elements.push(
             <Wrapper key={`inline-group-${elements.length}`} {...wrapperProps}>
-              {currentInlineGroup.map((n, idx) => (
+              {currentInlineGroup.map((entry, idx) => (
                 <NodeRenderer
-                  key={`${n.type}-${idx}`}
-                  node={n}
+                  key={`${entry.node.type}-${idx}`}
+                  node={entry.node}
                   depth={depth + 1}
                   inListItem={childInListItem}
                   parentIsText={true}
+                  precedingChar={entry.before}
                 />
               ))}
             </Wrapper>,
@@ -125,9 +214,20 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
 
     children.forEach((child, index) => {
       if (isInline(child.type)) {
-        currentInlineGroup.push(child);
+        currentInlineGroup.push({ node: child, before: runningChar });
       } else {
         flushInlineGroup();
+        // Inside a run every block collapses into the same span tree, so the
+        // blank line markdown puts between blocks has to be rendered. Without
+        // it a two-paragraph blockquote reads as one glued line, and a nested
+        // list runs into its parent item's text.
+        if (inRunFlow && elements.length > 0) {
+          elements.push(
+            <Primitive key={`block-separator-${index}`}>
+              {blockSeparatorBefore(child)}
+            </Primitive>,
+          );
+        }
         elements.push(
           <NodeRenderer
             key={`${child.type}-${index}`}
@@ -135,8 +235,12 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
             depth={depth + 1}
             inListItem={childInListItem}
             parentIsText={childParentIsText}
+            precedingChar={runningChar}
           />,
         );
+      }
+      if (smartPunctuation) {
+        runningChar = smartTrailingChar(child, runningChar);
       }
     });
 
@@ -195,13 +299,32 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
 
   switch (node.type) {
     case "document":
+      if (selectable) {
+        return (
+          <View style={[baseStyles.document, nodeStyles?.document]}>
+            <RunDocument blocks={node.children ?? []} Renderer={NodeRenderer} />
+          </View>
+        );
+      }
       return (
         <View style={[baseStyles.document, nodeStyles?.document]}>
           {renderChildren(node.children, false, false)}
         </View>
       );
 
-    case "heading":
+    case "heading": {
+      if (inRunFlow) {
+        const level = (node.level ?? 1) as 1 | 2 | 3 | 4 | 5 | 6;
+        return (
+          <Primitive
+            sourceRange={sourceRangeOf(node)}
+            style={[getRunFlowStyles(theme).heading[level], nodeStyles?.heading]}
+            accessibilityRole="header"
+          >
+            {renderChildren(node.children, inListItem, true)}
+          </Primitive>
+        );
+      }
       return (
         <Heading
           level={node.level ?? 1}
@@ -210,8 +333,22 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
           {renderChildren(node.children, inListItem, true)}
         </Heading>
       );
+    }
 
     case "paragraph":
+      if (inRunFlow) {
+        // No base text style here: the run host already paints it. Repeating
+        // it would make the innermost span win and a paragraph inside a
+        // blockquote would lose the quote's muted colour.
+        return (
+          <Primitive
+            sourceRange={sourceRangeOf(node)}
+            style={toRunFlowTextStyle(nodeStyles?.paragraph, "paragraph")}
+          >
+            {renderChildren(node.children, inListItem, true)}
+          </Primitive>
+        );
+      }
       if (containsInlineMath(node.children)) {
         return (
           <Paragraph inListItem={inListItem} style={nodeStyles?.paragraph}>
@@ -231,15 +368,40 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
         </Text>
       );
 
-    case "text":
+    case "text": {
+      const textContent =
+        smartPunctuation && node.content
+          ? smartenText(node.content, precedingChar)
+          : node.content;
+      if (inRunFlow) {
+        return (
+          <Primitive
+            sourceRange={sourceRangeOf(node)}
+            style={parentIsText ? undefined : [baseStyles.text, nodeStyles?.text]}
+          >
+            {textContent}
+          </Primitive>
+        );
+      }
       if (parentIsText) {
-        return <Text>{node.content}</Text>;
+        return <Text>{textContent}</Text>;
       }
       return (
-        <Text style={[baseStyles.text, nodeStyles?.text]}>{node.content}</Text>
+        <Text style={[baseStyles.text, nodeStyles?.text]}>{textContent}</Text>
       );
+    }
 
     case "bold":
+      if (inRunFlow) {
+        return (
+          <Primitive
+            sourceRange={sourceRangeOf(node)}
+            style={[baseStyles.bold, nodeStyles?.bold]}
+          >
+            {renderChildren(node.children, inListItem, true)}
+          </Primitive>
+        );
+      }
       return (
         <Text style={[baseStyles.bold, nodeStyles?.bold]}>
           {renderChildren(node.children, inListItem, true)}
@@ -247,6 +409,16 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
       );
 
     case "italic":
+      if (inRunFlow) {
+        return (
+          <Primitive
+            sourceRange={sourceRangeOf(node)}
+            style={[baseStyles.italic, nodeStyles?.italic]}
+          >
+            {renderChildren(node.children, inListItem, true)}
+          </Primitive>
+        );
+      }
       return (
         <Text style={[baseStyles.italic, nodeStyles?.italic]}>
           {renderChildren(node.children, inListItem, true)}
@@ -254,14 +426,24 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
       );
 
     case "strikethrough":
+      if (inRunFlow) {
+        return (
+          <Primitive
+            sourceRange={sourceRangeOf(node)}
+            style={[baseStyles.strikethrough, nodeStyles?.strikethrough]}
+          >
+            {renderChildren(node.children, inListItem, true)}
+          </Primitive>
+        );
+      }
       return (
         <Text style={[baseStyles.strikethrough, nodeStyles?.strikethrough]}>
           {renderChildren(node.children, inListItem, true)}
         </Text>
       );
 
-    case "link":
-      return (
+    case "link": {
+      const linkElement = (
         <Link
           href={node.href ?? ""}
           {...(nodeStyles?.link ? { style: nodeStyles.link } : {})}
@@ -269,6 +451,13 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
           {renderChildren(node.children, inListItem, true)}
         </Link>
       );
+      if (inRunFlow) {
+        return (
+          <Primitive sourceRange={sourceRangeOf(node)}>{linkElement}</Primitive>
+        );
+      }
+      return linkElement;
+    }
 
     case "image":
       return (
@@ -281,8 +470,8 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
         />
       );
 
-    case "code_inline":
-      return (
+    case "code_inline": {
+      const inlineCodeElement = (
         <InlineCode
           {...(nodeStyles?.code_inline
             ? { style: nodeStyles.code_inline }
@@ -291,6 +480,15 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
           {node.content}
         </InlineCode>
       );
+      if (inRunFlow) {
+        return (
+          <Primitive sourceRange={sourceRangeOf(node)}>
+            {inlineCodeElement}
+          </Primitive>
+        );
+      }
+      return inlineCodeElement;
+    }
 
     case "code_block":
       return (
@@ -302,6 +500,19 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
       );
 
     case "blockquote":
+      if (inRunFlow) {
+        return (
+          <Primitive
+            sourceRange={sourceRangeOf(node)}
+            style={[
+              getRunFlowStyles(theme).blockquote,
+              toRunFlowTextStyle(nodeStyles?.blockquote, "blockquote"),
+            ]}
+          >
+            {renderChildren(node.children, inListItem, true)}
+          </Primitive>
+        );
+      }
       return (
         <Blockquote
           {...(nodeStyles?.blockquote
@@ -313,6 +524,21 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
       );
 
     case "horizontal_rule":
+      if (inRunFlow) {
+        // A rule inside a run is text, not a view: it is the one block whose
+        // run presentation a reader can tell apart from the standalone one,
+        // and a screen reader reads it out with the rest of the run.
+        return (
+          <Primitive
+            style={[
+              getRunFlowStyles(theme).horizontalRule,
+              toRunFlowTextStyle(nodeStyles?.horizontal_rule, "horizontal_rule"),
+            ]}
+          >
+            {"———"}
+          </Primitive>
+        );
+      }
       return (
         <HorizontalRule
           {...(nodeStyles?.horizontal_rule
@@ -322,9 +548,21 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
       );
 
     case "line_break":
+      // Inside a run a break carries its own source range like any other
+      // span. Left unannotated it inherits the enclosing paragraph's range,
+      // whose length never matches one character, and every selection
+      // crossing a line wrap degrades to the whole paragraph.
+      if (inRunFlow) {
+        return (
+          <Primitive sourceRange={sourceRangeOf(node)}>{"\n"}</Primitive>
+        );
+      }
       return <Text>{"\n"}</Text>;
 
     case "soft_break":
+      if (inRunFlow) {
+        return <Primitive sourceRange={sourceRangeOf(node)}> </Primitive>;
+      }
       return <Text> </Text>;
 
     case "math_inline": {
@@ -369,7 +607,42 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
         />
       );
 
-    case "list":
+    case "list": {
+      if (inRunFlow) {
+        const startNumber = node.start ?? 1;
+        const indent = "  ".repeat(runListIndentDepth(depth));
+        const items: ReactNode[] = [];
+        node.children?.forEach((child, index) => {
+          const itemKey =
+            typeof child.beg === "number" ? `${child.beg}` : `@${index}`;
+          if (index > 0) {
+            items.push(
+              <Primitive key={`line-break:${itemKey}`}>{"\n"}</Primitive>,
+            );
+          }
+          const marker =
+            child.type === "task_list_item"
+              ? child.checked
+                ? "☑ "
+                : "☐ "
+              : node.ordered
+                ? `${startNumber + index}. `
+                : "• ";
+          items.push(
+            <Primitive key={`marker:${itemKey}`}>{indent + marker}</Primitive>,
+          );
+          items.push(
+            <NodeRenderer
+              key={`item:${itemKey}`}
+              node={child}
+              depth={depth + 1}
+              inListItem={true}
+              parentIsText={true}
+            />,
+          );
+        });
+        return <>{items}</>;
+      }
       return (
         <List
           ordered={node.ordered ?? false}
@@ -407,11 +680,16 @@ const NodeRendererComponent: FC<NodeRendererProps> = ({
           })}
         </List>
       );
+    }
 
     case "list_item":
-      return <>{renderChildren(node.children, true, false)}</>;
+      return <>{renderChildren(node.children, true, inRunFlow)}</>;
 
     case "task_list_item":
+      if (inRunFlow) {
+        // The list case already rendered the checkbox marker.
+        return <>{renderChildren(node.children, true, true)}</>;
+      }
       return (
         <TaskListItem
           checked={node.checked ?? false}
@@ -448,7 +726,8 @@ export const NodeRenderer = memo(NodeRendererComponent, (previousProps, nextProp
     previousProps.node === nextProps.node &&
     previousProps.depth === nextProps.depth &&
     previousProps.inListItem === nextProps.inListItem &&
-    previousProps.parentIsText === nextProps.parentIsText
+    previousProps.parentIsText === nextProps.parentIsText &&
+    previousProps.precedingChar === nextProps.precedingChar
   );
 }) as FC<NodeRendererProps>;
 

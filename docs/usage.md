@@ -26,7 +26,7 @@ CommonMark plus GitHub Flavored Markdown:
 - Blockquotes, ordered / unordered / nested lists, task lists
 - Fenced code blocks (with optional syntax highlighting)
 - GFM tables with column alignment, horizontal scroll, and a copy menu
-- Inline `$math$` and block `$$math$$` (via `ratex-react-native`)
+- Inline `$math$` and block `$$math$$` (rendered as monospace text)
 - Thematic breaks (`---`)
 - Raw HTML nodes (opt-in via `options.html`) for custom renderers
 

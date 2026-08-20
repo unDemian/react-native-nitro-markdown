@@ -1,4 +1,8 @@
-import type { FC, ComponentType, ReactNode } from "react";
+// Math rendering intentionally ships without a native math engine: the fork
+// dropped the math rendering peer dependency outright, which removes the
+// autolinking workaround consumers previously needed. Math content renders as
+// monospace text.
+import type { FC, ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
@@ -14,27 +18,6 @@ import { getCachedStyles } from "./style-cache";
 import { useMarkdownContext } from "../MarkdownContext";
 import type { MarkdownTheme } from "../theme";
 
-let RaTeXViewComponent: ComponentType<{
-  latex: string;
-  fontSize?: number;
-  displayMode?: boolean;
-  color?: string;
-  style?: StyleProp<ViewStyle>;
-  onError?: (event: { nativeEvent: { error: string } }) => void;
-}> | null = null;
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const ratexModule = require("ratex-react-native");
-  RaTeXViewComponent = ratexModule.RaTeXView ?? null;
-} catch {
-  if (__DEV__) {
-    console.warn(
-      "[NitroMarkdown] ratex-react-native not found — math will render as plain text.",
-    );
-  }
-}
-
 type MathInlineProps = {
   content?: string;
   style?: ViewStyle;
@@ -43,14 +26,6 @@ type MathInlineProps = {
 type MathStyles = ReturnType<typeof createMathStyles>;
 
 const mathStylesCache = new WeakMap<MarkdownTheme, MathStyles>();
-const INLINE_DISPLAY_MATH_PATTERN =
-  /\\(?:frac|dfrac|tfrac|sqrt|sum|prod|int|lim|begin|matrix|pmatrix|bmatrix|cases)\b/;
-
-function getInlineMathFontSize(content: string, theme: MarkdownTheme) {
-  return INLINE_DISPLAY_MATH_PATTERN.test(content)
-    ? theme.fontSizes.xl + 2
-    : theme.fontSizes.l;
-}
 
 type HorizontalMathViewportProps = {
   children: ReactNode;
@@ -166,10 +141,6 @@ const HorizontalMathViewport: FC<HorizontalMathViewportProps> = ({
 
 const createMathStyles = (theme: MarkdownTheme) =>
   StyleSheet.create({
-    mathInlineContainer: {
-      marginHorizontal: 2,
-      justifyContent: "center",
-    },
     mathInlineFallbackContainer: {
       backgroundColor: theme.colors.codeBackground,
       paddingHorizontal: theme.spacing.xs,
@@ -185,16 +156,6 @@ const createMathStyles = (theme: MarkdownTheme) =>
       color: theme.colors.code,
       ...(Platform.OS === "android" && { includeFontPadding: false }),
     },
-    ratexInline: {
-      backgroundColor: "transparent",
-      flexShrink: 0,
-    },
-    mathBlockContainer: {
-      width: "100%",
-      maxWidth: "100%",
-      alignSelf: "stretch",
-      marginVertical: theme.spacing.m,
-    },
     mathBlockScroll: {
       width: "100%",
       alignSelf: "stretch",
@@ -206,10 +167,6 @@ const createMathStyles = (theme: MarkdownTheme) =>
       alignItems: "center",
       justifyContent: "center",
       paddingVertical: theme.spacing.s,
-    },
-    ratexBlock: {
-      backgroundColor: "transparent",
-      flexShrink: 0,
     },
     mathBlockFallbackContainer: {
       width: "100%",
@@ -239,39 +196,8 @@ const createMathStyles = (theme: MarkdownTheme) =>
 export const MathInline: FC<MathInlineProps> = ({ content, style }) => {
   const { theme } = useMarkdownContext();
   const styles = getCachedStyles(mathStylesCache, theme, createMathStyles);
-  const [hasRenderError, setHasRenderError] = useState(false);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   if (!content) return null;
-
-  if (RaTeXViewComponent && !hasRenderError) {
-    return (
-      <View
-        style={[styles.mathInlineContainer, style]}
-        accessible
-        accessibilityLabel={content}
-      >
-        <RaTeXViewComponent
-          latex={content}
-          fontSize={getInlineMathFontSize(content, theme)}
-          displayMode={false}
-          style={styles.ratexInline}
-          {...(theme.colors.text ? { color: theme.colors.text } : {})}
-          onError={() => {
-            if (!mountedRef.current) return;
-            setHasRenderError(true);
-          }}
-        />
-      </View>
-    );
-  }
 
   return (
     <View style={[styles.mathInlineFallbackContainer, style]}>
@@ -288,44 +214,8 @@ type MathBlockProps = {
 export const MathBlock: FC<MathBlockProps> = ({ content, style }) => {
   const { theme } = useMarkdownContext();
   const styles = getCachedStyles(mathStylesCache, theme, createMathStyles);
-  const [hasRenderError, setHasRenderError] = useState(false);
-  const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
 
   if (!content) return null;
-
-  if (RaTeXViewComponent && !hasRenderError) {
-    return (
-      <View
-        style={[styles.mathBlockContainer, style]}
-        accessible
-        accessibilityLabel={content}
-      >
-        <HorizontalMathViewport
-          style={styles.mathBlockScroll}
-          contentStyle={styles.mathBlockScrollContent}
-        >
-          <RaTeXViewComponent
-            latex={content}
-            fontSize={theme.fontSizes.xl}
-            displayMode
-            style={styles.ratexBlock}
-            {...(theme.colors.text ? { color: theme.colors.text } : {})}
-            onError={() => {
-              if (!mountedRef.current) return;
-              setHasRenderError(true);
-            }}
-          />
-        </HorizontalMathViewport>
-      </View>
-    );
-  }
 
   return (
     <View style={[styles.mathBlockFallbackContainer, style]}>

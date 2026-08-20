@@ -89,6 +89,27 @@ export { TableRenderer } from "./renderers/table";
 export { Image } from "./renderers/image";
 export { MathInline, MathBlock } from "./renderers/math";
 
+export { classifyBlock } from "./selection/classification";
+export type { BlockClass, ClassifyBlock } from "./selection/classification";
+export { assembleRuns } from "./selection/runs";
+export type { RunPart } from "./selection/runs";
+export { mapSelectionToSource } from "./selection/range-mapping";
+export type {
+  AnnotatedSpan,
+  MappedSourceRange,
+} from "./selection/range-mapping";
+export { RunText, sourceRangeOf } from "./selection/run-text";
+export type { RunTextProps, SourceRange } from "./selection/run-text";
+export { SelectableRunHost } from "./selection/selectable-run-host";
+export type {
+  RunHostSelection,
+  SelectableRunHostProps,
+} from "./selection/selectable-run-host";
+export { smartenText } from "./selection/smart-punctuation";
+export { RunFlowContext, useInRunFlow } from "./selection/run-flow-context";
+
+export { useIncrementalMarkdownAst } from "./use-incremental-markdown";
+
 export { createMarkdownSession } from "./MarkdownSession";
 export type { MarkdownSession } from "./MarkdownSession";
 export { useMarkdownSession, useStream } from "./use-markdown-stream";

@@ -96,6 +96,17 @@ function RootTabs() {
           }}
         />
         <Tabs.Screen
+          name="render-selectable"
+          options={{
+            title: "Selectable Runs",
+            tabBarLabel: "Select",
+            tabBarAccessibilityLabel: "Selectable runs",
+            tabBarIcon: ({ color, size: _size }) => (
+              <Ionicons name="text-outline" size={24} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
           name="render-stream"
           options={{
             title: "Token Stream",

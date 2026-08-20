@@ -10,17 +10,17 @@ custom native build. It cannot run in Expo Go.
 | ---------- | ------- |
 | React Native | `>=0.75` (New Architecture / Fabric) |
 | [react-native-nitro-modules](https://www.npmjs.com/package/react-native-nitro-modules) | `>=0.36.5 <0.37.0` (peer dependency) |
-| [ratex-react-native](https://www.npmjs.com/package/ratex-react-native) | `>=0.1.4` (peer dependency, example validated with `0.1.14`) |
 | iOS | 16.4+ |
 | Expo | SDK 57 development build |
 
-`react-native-nitro-modules` and `ratex-react-native` are peer dependencies
-because parsing and math rendering run in native code.
+`react-native-nitro-modules` is a peer dependency because parsing runs in native
+code. It is the only peer dependency — math nodes render as monospace text, so
+there is no math engine to install or link.
 
 ## Expo (development build)
 
 ```sh
-bunx expo install react-native-nitro-markdown react-native-nitro-modules@0.36.5 ratex-react-native@0.1.14
+bunx expo install react-native-nitro-markdown react-native-nitro-modules@0.36.5
 bunx expo prebuild
 bunx expo run:ios   # or run:android
 ```
@@ -33,7 +33,7 @@ upgrading the package so the native projects pick up the new module.
 ## Bare React Native
 
 ```sh
-bun add react-native-nitro-markdown react-native-nitro-modules@0.36.5 ratex-react-native@0.1.14
+bun add react-native-nitro-markdown react-native-nitro-modules@0.36.5
 cd ios && bundle exec pod install
 ```
 

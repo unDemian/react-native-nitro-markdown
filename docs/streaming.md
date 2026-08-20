@@ -56,6 +56,9 @@ Pass the controller from `useMarkdownSession()` directly. Use
 
 Everything else (new blocks, emphasis, links, tables, closing fences, …) is
 re-parsed and then diffed so stable nodes keep their identity (`reuseStableAstNodes`).
+`<Markdown>` runs the same diff over its own parses, so a stream held in state
+and passed as children keeps node identity too — that is what lets the
+renderer memo skip the parts of the document that did not change.
 The fast paths are covered by deterministic call-count tests in
 `src/__tests__/markdown-stream.test.ts` — a plain-text append never re-parses,
 a structural append always does.
