@@ -89,19 +89,25 @@ native `runHost` (dev builds warn). The four requirements for a host are in
 
 Not on npm — that name is upstream's package. A `github:` dependency won't work
 either, since the package lives in `packages/` and neither npm nor bun installs
-a git subdirectory. Build a tarball and vendor it:
+a git subdirectory. Every
+[release](https://github.com/unDemian/react-native-nitro-markdown/releases)
+attaches a built tarball; install it by URL:
+
+```sh
+# in your app
+bun add react-native-nitro-markdown@https://github.com/unDemian/react-native-nitro-markdown/releases/download/v0.11.0-superpower.4/react-native-nitro-markdown-0.11.0-superpower.4.tgz
+bun add react-native-nitro-modules@0.36.5
+bunx expo prebuild
+```
+
+Or build the tarball yourself and vendor it:
 
 ```sh
 git clone https://github.com/unDemian/react-native-nitro-markdown.git
 cd react-native-nitro-markdown && bun install && bun run build
 cd packages/react-native-nitro-markdown && bun pm pack
-```
-
-```sh
-# in your app
+# then, in your app
 bun add ./vendor/react-native-nitro-markdown-0.11.0-superpower.4.tgz
-bun add react-native-nitro-modules@0.36.5
-bunx expo prebuild
 ```
 
 Requires React Native >=0.75 (New Architecture), Nitro Modules >=0.36.5 <0.37.0,

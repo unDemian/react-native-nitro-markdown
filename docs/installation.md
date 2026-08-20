@@ -17,10 +17,24 @@ custom native build. It cannot run in Expo Go.
 code. It is the only peer dependency — math nodes render as monospace text, so
 there is no math engine to install or link.
 
-## Expo (development build)
+## Getting the package
+
+This fork is not on npm — that name is upstream's package — and a `github:`
+dependency cannot reach a package that lives in `packages/`. Each
+[release](https://github.com/unDemian/react-native-nitro-markdown/releases)
+attaches a built tarball, so install it by URL (or build one yourself with
+`bun run build && cd packages/react-native-nitro-markdown && bun pm pack`):
 
 ```sh
-bunx expo install react-native-nitro-markdown react-native-nitro-modules@0.36.5
+bun add react-native-nitro-markdown@https://github.com/unDemian/react-native-nitro-markdown/releases/download/v0.11.0-superpower.4/react-native-nitro-markdown-0.11.0-superpower.4.tgz
+```
+
+## Expo (development build)
+
+With the tarball added, install the peer dependency and rebuild:
+
+```sh
+bunx expo install react-native-nitro-modules@0.36.5
 bunx expo prebuild
 bunx expo run:ios   # or run:android
 ```
@@ -32,8 +46,10 @@ upgrading the package so the native projects pick up the new module.
 
 ## Bare React Native
 
+Same tarball, then the peer dependency:
+
 ```sh
-bun add react-native-nitro-markdown react-native-nitro-modules@0.36.5
+bun add react-native-nitro-modules@0.36.5
 cd ios && bundle exec pod install
 ```
 
